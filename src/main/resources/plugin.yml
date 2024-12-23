@@ -1,0 +1,7 @@
+name: ServersideProxyChat
+version: '1.0-SNAPSHOT'
+main: io.github.maliciousfiles.serversideProxyChat.ServersideProxyChat
+api-version: '1.21'
+authors: [ MaliciousFiles ]
+description: Adds proximity voice chat without any installation on the client side.
+website: https://github.com/MaliciousFiles/ServersideProxyChat
