@@ -1,9 +1,6 @@
 package io.github.maliciousfiles.serversideProxyChat;
 
-import io.github.maliciousfiles.serversideProxyChat.commands.DisconnectCommand;
-import io.github.maliciousfiles.serversideProxyChat.commands.MuteCommand;
-import io.github.maliciousfiles.serversideProxyChat.commands.PrivateChannelCommand;
-import io.github.maliciousfiles.serversideProxyChat.commands.ProxyChatCommand;
+import io.github.maliciousfiles.serversideProxyChat.commands.*;
 import org.bukkit.Server;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -25,6 +22,7 @@ public final class ServersideProxyChat extends JavaPlugin {
         registerCommand("unmute", new MuteCommand(false));
         registerCommand("disconnect", new DisconnectCommand());
         registerCommand("private-channel", new PrivateChannelCommand());
+        registerCommand("website", new WebsiteCommand());
 
         VoiceServer.start();
     }

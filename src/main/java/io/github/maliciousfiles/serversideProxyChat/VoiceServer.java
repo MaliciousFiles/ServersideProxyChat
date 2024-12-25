@@ -33,7 +33,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class VoiceServer {
-    private static String ip;
+    public static String ip;
 
     public static void start() {
         new Thread(() -> {

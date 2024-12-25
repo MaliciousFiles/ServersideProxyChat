@@ -18,3 +18,6 @@ commands:
   private-channel:
     description: Manage private channels
     usage: /private-channel <join|leave> [channel|player] [player]
+  website:
+    description: Get the voice server website
+    usage: /website
