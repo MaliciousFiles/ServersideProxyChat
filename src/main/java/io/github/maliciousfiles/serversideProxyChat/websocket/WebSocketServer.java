@@ -35,15 +35,10 @@ public class WebSocketServer extends SimpleChannelInboundHandler<WebSocketPacket
     private static final List<BidiEntry<String, String>> connected = new ArrayList<>(); // list of players with P2P connections; ID <=> ID
     private static final Set<String> forceMuted = new HashSet<>();
     private static final Set<String> selfMuted = new HashSet<>();
+    private static final Map<String, String> privateChannels = new HashMap<>(); // ID => channel/null
 
     public static boolean isRegistered(Player player) {
         return players.containsKey(player.getUniqueId());
-    }
-
-    public static void sendPacket(Player player, WebSocketPacket packet) {
-        if (!isRegistered(player)) return;
-
-        webSockets.get(players.get(player.getUniqueId())).channel.writeAndFlush(packet);
     }
 
     public static boolean isForceMuted(Player player) {
@@ -51,6 +46,27 @@ public class WebSocketServer extends SimpleChannelInboundHandler<WebSocketPacket
     }
     public static boolean isSelfMuted(Player player) {
         return !isRegistered(player) || selfMuted.contains(players.get(player.getUniqueId()));
+    }
+
+    public static List<String> getPrivateChannels() {
+        return new ArrayList<>(privateChannels.values());
+    }
+    public static String getPrivateChannel(Player player) {
+        if (!isRegistered(player)) return null;
+
+        return privateChannels.get(players.get(player.getUniqueId()));
+    }
+    public static void joinPrivateChannel(Player player, String channel) {
+        if (!isRegistered(player)) return;
+
+        privateChannels.put(players.get(player.getUniqueId()), channel);
+        calculateVolume(player.getUniqueId());
+    }
+    public static void leavePrivateChannel(Player player) {
+        if (!isRegistered(player)) return;
+
+        privateChannels.remove(players.get(player.getUniqueId()));
+        calculateVolume(player.getUniqueId());
     }
 
     public static void forceMute(Player player, boolean mute) {
@@ -120,13 +136,16 @@ public class WebSocketServer extends SimpleChannelInboundHandler<WebSocketPacket
         String id = players.get(uuid);
         if (player == null || id == null) return;
 
+        String privateChannel = privateChannels.get(id);
         for (Player other : player.getWorld().getPlayers()) {
             String otherId = players.get(other.getUniqueId());
             if (otherId == null) continue;
 
             // TODO: calculate volumes goodly
-            setVolume(id, otherId, forceMuted.contains(id) ? 0 :
-                    Math.clamp(1 - (player.getLocation().distance(other.getLocation()))/50, 0, 1));
+            setVolume(id, otherId, forceMuted.contains(id) || selfMuted.contains(id)
+                    ? 0
+                    : privateChannel != null && privateChannel.equals(privateChannels.get(otherId)) ? 1
+                    : Math.clamp(1 - (player.getLocation().distance(other.getLocation()))/50, 0, 1));
         }
     }
 
@@ -198,13 +217,14 @@ public class WebSocketServer extends SimpleChannelInboundHandler<WebSocketPacket
 
     // destroy all information associated with this handler; exit
     private void exit() {
-        if (id != null && webSockets.containsKey(id)) {
+        if (id != null) {
             removeAllPeers(id);
             webSockets.remove(id);
             forceMuted.remove(id);
             selfMuted.remove(id);
-            if (player != null) players.remove(player);
+            privateChannels.remove(id);
         }
+        if (player != null) players.remove(player);
 
         close(channel);
     }
@@ -345,7 +365,12 @@ public class WebSocketServer extends SimpleChannelInboundHandler<WebSocketPacket
         public void onMove(PlayerMoveEvent e) {
             if (e.getFrom().distanceSquared(e.getTo()) == 0) return;
 
-            calculateVolume(e.getPlayer().getUniqueId());
+            String id = players.get(e.getPlayer().getUniqueId());
+            if (id == null) return;
+
+            if (privateChannels.get(id) != null && !forceMuted.contains(id) && !selfMuted.contains(id)) {
+                calculateVolume(e.getPlayer().getUniqueId());
+            }
         }
 
         // let the website know the player is back in
@@ -353,11 +378,10 @@ public class WebSocketServer extends SimpleChannelInboundHandler<WebSocketPacket
         public void onJoin(PlayerJoinEvent e) {
             UUID uuid = e.getPlayer().getUniqueId();
             String id = players.get(uuid);
+            if (id == null) return;
 
             calculateVolume(uuid);
-            if (id != null) {
-                webSockets.get(id).channel.writeAndFlush(new WebSocketPacket.JoinMinecraft());
-            }
+            webSockets.get(id).channel.writeAndFlush(new WebSocketPacket.JoinMinecraft());
         }
 
         // player left; exit voice chat; let website know

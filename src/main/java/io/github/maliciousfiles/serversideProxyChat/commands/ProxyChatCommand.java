@@ -9,6 +9,8 @@ import org.bukkit.command.TabCompleter;
 public abstract class ProxyChatCommand implements CommandExecutor, TabCompleter {
     protected static final String MUTE_OTHERS_PERM = "serversideproxychat.mute_others";
     protected static final String DISCONNECT_OTHERS_PERM = "serversideproxychat.disconnect_others";
+    protected static final String PRIVATE_CHANNEL_MANAGE_SELF_PERM = "serversideproxychat.private_channel.manage_self";
+    protected static final String PRIVATE_CHANNEL_MANAGE_OTHERS_PERM = "serversideproxychat.private_channel.manage_others";
 
     protected static boolean error(CommandSender sender, String error) {
         sender.sendMessage(Component.text(error)
