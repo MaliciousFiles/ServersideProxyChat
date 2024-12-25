@@ -45,7 +45,7 @@ public class DisconnectCommand extends ProxyChatCommand {
     @Override
     public @Nullable List<String> onTabComplete(@NotNull CommandSender commandSender, @NotNull Command command, @NotNull String s, @NotNull String[] strings) {
         return strings.length == 1 && commandSender.hasPermission(DISCONNECT_OTHERS_PERM)
-                ? Bukkit.getOnlinePlayers().stream().filter(WebSocketServer::isRegistered).filter(p->!p.equals(commandSender)).map(Player::getName).sorted().toList()
+                ? Bukkit.getOnlinePlayers().stream().filter(WebSocketServer::isRegistered).filter(p->!p.equals(commandSender)).map(Player::getName).filter(st->st.toLowerCase().startsWith(strings[strings.length-1].toLowerCase())).sorted().toList()
                 : List.of();
     }
 }

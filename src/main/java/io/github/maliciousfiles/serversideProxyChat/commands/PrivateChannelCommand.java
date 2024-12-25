@@ -22,7 +22,7 @@ public class PrivateChannelCommand extends ProxyChatCommand {
             if (strings.length < 2) {
                 return error(commandSender, "Must specify a channel to join");
             }
-            channel = strings[0].toLowerCase();
+            channel = strings[1].toLowerCase();
         }
 
         Player target = commandSender instanceof Player player ? player : null;
@@ -64,11 +64,11 @@ public class PrivateChannelCommand extends ProxyChatCommand {
             WebSocketServer.joinPrivateChannel(target, channel);
 
             return success(commandSender, self
-                    ? (!exists ? "Created and j" : "J") + "oined " + " private channel '" + channel + "'"
+                    ? (!exists ? "Created and j" : "J") + "oined private channel '" + channel + "'"
                     : (!exists ? "Created and a" : "A") + "dded " + target.getName() + " to private channel '" + channel + "'");
         } else {
             if (WebSocketServer.getPrivateChannel(target) == null) {
-                return error(commandSender, target.getName() + " is not in a private channel");
+                return error(commandSender, "Not in a private channel");
             }
 
             WebSocketServer.leavePrivateChannel(target);
@@ -99,11 +99,13 @@ public class PrivateChannelCommand extends ProxyChatCommand {
         } else if (strings.length == 3) {
             if (strings[0].equalsIgnoreCase("join")) {
                 if (commandSender.hasPermission(PRIVATE_CHANNEL_MANAGE_OTHERS_PERM)) {
-                    completions = Bukkit.getOnlinePlayers().stream().map(Player::getName).toList();
+                    completions = Bukkit.getOnlinePlayers().stream()
+                            .filter(p -> !strings[1].equalsIgnoreCase(WebSocketServer.getPrivateChannel(p)))
+                            .map(Player::getName).toList();
                 }
             }
         }
 
-        return completions.stream().sorted().toList();
+        return completions.stream().filter(st->st.toLowerCase().startsWith(strings[strings.length-1].toLowerCase())).sorted().toList();
     }
 }
