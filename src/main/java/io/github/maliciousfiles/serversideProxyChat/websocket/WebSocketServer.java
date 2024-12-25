@@ -1,4 +1,4 @@
-package io.github.maliciousfiles.serversideProxyChat.webSocket;
+package io.github.maliciousfiles.serversideProxyChat.websocket;
 
 import io.github.maliciousfiles.serversideProxyChat.ServersideProxyChat;
 import io.github.maliciousfiles.serversideProxyChat.util.BidiEntry;
@@ -11,6 +11,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
@@ -32,6 +33,57 @@ public class WebSocketServer extends SimpleChannelInboundHandler<WebSocketPacket
     private static final Map<String, WebSocketServer> webSockets = new HashMap<>(); // map of IDs to handlers for that channel
     private static final Map<UUID, String> players = new HashMap<>(); // map of player to ID
     private static final List<BidiEntry<String, String>> connected = new ArrayList<>(); // list of players with P2P connections; ID <=> ID
+    private static final Set<String> forceMuted = new HashSet<>();
+    private static final Set<String> selfMuted = new HashSet<>();
+
+    public static boolean isRegistered(Player player) {
+        return players.containsKey(player.getUniqueId());
+    }
+
+    public static void sendPacket(Player player, WebSocketPacket packet) {
+        if (!isRegistered(player)) return;
+
+        webSockets.get(players.get(player.getUniqueId())).channel.writeAndFlush(packet);
+    }
+
+    public static boolean isForceMuted(Player player) {
+        return !isRegistered(player) || forceMuted.contains(players.get(player.getUniqueId()));
+    }
+    public static boolean isSelfMuted(Player player) {
+        return !isRegistered(player) || selfMuted.contains(players.get(player.getUniqueId()));
+    }
+
+    public static void forceMute(Player player, boolean mute) {
+        if (!isRegistered(player)) return;
+
+        String id = players.get(player.getUniqueId());
+
+        if (mute) forceMuted.add(id);
+        else forceMuted.remove(id);
+        calculateVolume(player.getUniqueId());
+
+        webSockets.get(id).channel.writeAndFlush(new WebSocketPacket.ForceMute(mute));
+    }
+
+    public static void muteSelf(Player player, boolean mute) {
+        if (!isRegistered(player)) return;
+
+        String id = players.get(player.getUniqueId());
+
+        if (mute) selfMuted.add(id);
+        else selfMuted.remove(id);
+
+        webSockets.get(id).channel.writeAndFlush(new WebSocketPacket.MuteSelf(mute));
+    }
+
+    public static void disconnect(Player player) {
+        if (!isRegistered(player)) return;
+
+        String id = players.get(player.getUniqueId());
+
+        webSockets.get(id).channel.writeAndFlush(new WebSocketPacket.Disconnected());
+        webSockets.get(id).exit();
+    }
 
     // we need some Minecraft events to calculate volumes
     public static void initListener() {
@@ -66,18 +118,15 @@ public class WebSocketServer extends SimpleChannelInboundHandler<WebSocketPacket
     private static void calculateVolume(UUID uuid) {
         Player player = Bukkit.getPlayer(uuid);
         String id = players.get(uuid);
+        if (player == null || id == null) return;
 
-        if (player != null && id != null) {
-            for (Player other : player.getWorld().getPlayers()) {
-                String otherId = players.get(other.getUniqueId());
+        for (Player other : player.getWorld().getPlayers()) {
+            String otherId = players.get(other.getUniqueId());
+            if (otherId == null) continue;
 
-                if (otherId != null) {
-                    double distance = player.getLocation().distance(other.getLocation());
-
-                    // TODO: calculate volumes goodly
-                    setVolume(id, otherId, Math.max(0, Math.min(1, 1 - (distance / 50))));
-                }
-            }
+            // TODO: calculate volumes goodly
+            setVolume(id, otherId, forceMuted.contains(id) ? 0 :
+                    Math.clamp(1 - (player.getLocation().distance(other.getLocation()))/50, 0, 1));
         }
     }
 
@@ -92,7 +141,13 @@ public class WebSocketServer extends SimpleChannelInboundHandler<WebSocketPacket
         channel = ctx.channel();
 
         if (msg instanceof WebSocketPacket.Close) { // they want to exit
-            exit(ctx);
+            exit();
+
+            if (player != null) {
+                Optional.ofNullable(Bukkit.getPlayer(player))
+                        .ifPresent(p -> p.sendMessage(Component.text("Proximity voice chat connection terminated.")
+                                .color(NamedTextColor.RED)));
+            }
         } else if (msg instanceof WebSocketPacket.Validate(String iceID)) { // setting up the ID
             this.id = iceID;
 
@@ -116,6 +171,9 @@ public class WebSocketServer extends SimpleChannelInboundHandler<WebSocketPacket
             relaySessionDescription(relaySess);
         } else if (msg instanceof WebSocketPacket.VolumeVisualization volume) { // providing a volume visualization
             displayVolumeVisualization(volume);
+        } else if (msg instanceof WebSocketPacket.MuteSelf(boolean muted)) {
+            if (muted) selfMuted.add(id);
+            else selfMuted.remove(id);
         }
 
         if (msg instanceof WebSocketPacket.Validate || msg instanceof WebSocketPacket.RequestPlayerList) { // need to give them the player list
@@ -129,7 +187,7 @@ public class WebSocketServer extends SimpleChannelInboundHandler<WebSocketPacket
         if (onlinePlayer == null) return;
         if (!volume.actionBar().matches("[▁▂▃▄▅▆▇█]+")) return;
 
-        onlinePlayer.sendActionBar(Component.text(volume.actionBar()).color(NamedTextColor.GREEN));
+        onlinePlayer.sendActionBar(Component.text(volume.actionBar()).color(TextColor.color(153, 255, 157)));
     }
 
     // forcibly terminate the web socket connection
@@ -139,14 +197,16 @@ public class WebSocketServer extends SimpleChannelInboundHandler<WebSocketPacket
     }
 
     // destroy all information associated with this handler; exit
-    private void exit(ChannelHandlerContext ctx) {
+    private void exit() {
         if (id != null && webSockets.containsKey(id)) {
             removeAllPeers(id);
             webSockets.remove(id);
+            forceMuted.remove(id);
+            selfMuted.remove(id);
             if (player != null) players.remove(player);
         }
 
-        close(ctx.channel());
+        close(channel);
     }
 
     // idk, just pass it along
@@ -173,11 +233,12 @@ public class WebSocketServer extends SimpleChannelInboundHandler<WebSocketPacket
 
         AtomicReference<WebSocketPacket.JoinVerify.VerifyResponse> response = new AtomicReference<>();
 
-        if (players.containsKey(player.getUniqueId())) { // already taken
+        if (player.isOnline() && isRegistered(player.getPlayer())) { // already taken
             ctx.writeAndFlush(WebSocketPacket.JoinVerify.of(WebSocketPacket.JoinVerify.VerifyResponse.TAKEN, player.getName()));
             return;
         } else if (!player.isOnline()) { // not online
-            response.set(WebSocketPacket.JoinVerify.VerifyResponse.NOT_FOUND);
+//            response.set(WebSocketPacket.JoinVerify.VerifyResponse.NOT_FOUND);
+            response.set(WebSocketPacket.JoinVerify.VerifyResponse.ACCEPTED);
         } else { // ask the player
             String yes = "/" + UUID.randomUUID();
             String no = "/" + UUID.randomUUID();
@@ -208,7 +269,7 @@ public class WebSocketServer extends SimpleChannelInboundHandler<WebSocketPacket
                 response.set(WebSocketPacket.JoinVerify.VerifyResponse.TIMED_OUT);
             } else if (completed) {
                 player.getPlayer().sendMessage(
-                        Component.text("Proximity voice chat request validated.")
+                        Component.text("Proximity voice chat request validated. Return to the website to proceed.")
                                 .color(NamedTextColor.GREEN));
                 response.set(WebSocketPacket.JoinVerify.VerifyResponse.ACCEPTED);
             } else {

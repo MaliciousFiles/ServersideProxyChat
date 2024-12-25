@@ -1,8 +1,8 @@
 package io.github.maliciousfiles.serversideProxyChat;
 
 import io.github.maliciousfiles.serversideProxyChat.util.Pair;
-import io.github.maliciousfiles.serversideProxyChat.webSocket.WebSocketCodec;
-import io.github.maliciousfiles.serversideProxyChat.webSocket.WebSocketServer;
+import io.github.maliciousfiles.serversideProxyChat.websocket.WebSocketCodec;
+import io.github.maliciousfiles.serversideProxyChat.websocket.WebSocketServer;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.*;
@@ -25,13 +25,11 @@ import java.io.*;
 import java.lang.reflect.Field;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
 import java.security.SecureRandom;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 public class VoiceServer {
@@ -64,14 +62,13 @@ public class VoiceServer {
                 .build();
 
         MinecraftServer server = MinecraftServer.getServer();
-//        server.getConnection().stop();
 
         try {
             Field connection = MinecraftServer.class.getDeclaredField("connection");
             Field channels = ServerConnectionListener.class.getDeclaredField("channels");
             connection.setAccessible(true);
             channels.setAccessible(true);
-//            connection.set(server, new CustomConnectionListener(server, server.getConnection().getConnections()));
+
             ((List<ChannelFuture>) channels.get(connection.get(server))).getFirst().addListener(f -> {
                 if (f instanceof DefaultChannelPromise promise) {
                     promise.channel().pipeline().addFirst("ServersideProxyChatListener", new ChannelInboundHandlerAdapter() {
@@ -224,6 +221,5 @@ public class VoiceServer {
     public static void stop() {
         if (removeListener != null) removeListener.run();
         WebSocketServer.unload();
-//        MinecraftServer.getServer().getConnection().stop();
     }
 }

@@ -165,6 +165,7 @@
         h3 {
             font-size: small;
             margin-top: 0;
+            margin-bottom: 0;
             color: #aaa6a6;
         }
 
@@ -179,7 +180,16 @@
             color: #898989;
         }
 
-        div#playerSelect div.button {
+        #playerSelectMessageButton  {
+            top: -2px;
+            font-size: 25px !important;
+            width: 30px !important;
+            height: 30px !important;
+            animation: fadeIn 2300ms;
+            position: relative !important;
+        }
+
+        div.button {
             background-color: #4895d8;
             border-style: none;
             border-radius: 5px;
@@ -190,6 +200,11 @@
             text-align: center;
             position: absolute;
             cursor: pointer;
+        }
+
+        .button-container {
+            width: 40px;
+            height: 40px;
         }
 
         .fullscreen-container {
@@ -206,10 +221,15 @@
 
         .popup {
             width: 66%;
-            height: 40%;
+            height: 35%;
             background: white;
             margin: auto;
             border-radius: 25px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 2%;
         }
 
         .popupContainer {
@@ -225,7 +245,7 @@
             justify-content: center;
         }
 
-        div#playerSelect div.button:active {
+        div.button:active {
             background-color: #3375ab;
         }
 
@@ -233,6 +253,13 @@
             left: 20%;
         }
 
+        #disconnectButton {
+            left: 10%;
+            font-size: 35px;
+            justify-content: center;
+            display: flex;
+            flex-direction: column;
+        }
 
         #playerSelectConfirm:not([hidden]), #playerSelectMessageButton:not([hidden]) {
             display: flex;
@@ -241,14 +268,6 @@
         #playerSelectConfirm {
             right: 20%;
             font-size: 35px !important;
-        }
-
-        #playerSelectMessageButton {
-            top: -2px;
-            font-size: 25px !important;
-            width: 30px !important;
-            height: 30px !important;
-            animation: fadeIn 2300ms;
         }
 
         #playerSelectConfirm, #playerSelectMessageButton {
@@ -291,15 +310,15 @@
 
         #mic-icon {
             font-size: 7rem;
+        }
+
+        #mic-icon[force_muted="true"] {
+            color: #c14242;
+        }
+
+        #mic-icon[force_muted="false"] {
+            color: #aaaaaa;
             cursor: pointer;
-        }
-
-        #mic-icon.talking[name="mic"] {
-            opacity: 60%;
-        }
-
-        #mic-icon {
-            opacity: 30%;
         }
 
 
@@ -396,6 +415,9 @@
         let gain_nodes = {};            /* keep track of our gain nodes, indexed by peer_id */
         let peer_media_elements = {};  /* keep track of our <video>/<audio> tags, indexed by peer_id */
         let message_queue = []; /* keep track of the messages the server sends before `local_media_stream` is defined */
+        let self_muted = false;
+        let force_muted = false;
+        let mic_icon;
 
         /*
          * AUDIO VISUALIZATION VARIABLES
@@ -412,6 +434,16 @@
         let frequencyStep = sampleRate/fftSize;
 
         let indices = Array.from(new Array(actionBarLength+1), (val,idx) => idx === 0 ? 0 : Math.round(lowestFrequency*Math.pow(expBase, idx)/frequencyStep));
+
+        function setMuted(muted, forceMuted=undefined) {
+            if (forceMuted !== undefined) force_muted = forceMuted;
+            self_muted = muted;
+
+            mic_icon.setAttribute('force_muted', force_muted);
+            mic_icon.setAttribute('name', muted || force_muted ? 'mic-off' : 'mic');
+
+            local_media_stream.getAudioTracks()[0].enabled = !muted && !force_muted;
+        }
 
         function genID() {
             let pass = "";
@@ -442,12 +474,12 @@
         function init() {
             const emit = (event, data) => {
                 data.event = event;
-                // console.log(data);
-                signaling_socket.send(JSON.stringify(data));
+                if (signaling_socket.readyState === 1) {
+                    signaling_socket.send(JSON.stringify(data));
+                }
             }
 
             const connect = () => {
-                console.log("Connected to signaling server");
                 emit("validate", {"id": genID()})
             };
             const joinVerify = (data) => {
@@ -469,6 +501,11 @@
                     btn[0].removeAttribute("hidden");
 
                     btn[0].onclick = () => {
+                        if (!data.valid) {
+                            location.reload();
+                            return;
+                        }
+
                         $("#playerSelectPopup > .popup").fadeOut(600);
                         $("#playerSelectPopup").fadeOut(800);
 
@@ -480,152 +517,149 @@
                         $("#playerSelectConfirm").fadeOut(1000, () => {
                             $("#playerSelect").remove();
 
-                            if (data.valid) {
-                                setup_local_media(
-                                    () => { // accepted
-                                        for (let config of message_queue) {
-                                            signaling_socket.onmessage({"data": JSON.stringify(config)});
+                            setup_local_media(
+                                () => { // accepted
+                                    for (let config of message_queue) {
+                                        signaling_socket.onmessage({"data": JSON.stringify(config)});
+                                    }
+                                    message_queue = [];
+
+                                    let div = document.createElement("div");
+
+                                    let exit = document.createElement("div");
+                                    exit.classList.add("button");
+                                    exit.id = "disconnectButton";
+                                    exit.title = "Disconnect";
+                                    exit.innerHTML = "&hookleftarrow;"; // ↩
+                                    div.appendChild(exit);
+                                    $(exit).click(disconnect);
+
+                                    let iconContainer = document.createElement("div");
+
+                                    mic_icon = document.createElement("ion-icon");
+                                    mic_icon.id = "mic-icon";
+                                    mic_icon.name = "mic";
+                                    mic_icon.setAttribute('force_muted', false);
+                                    $(mic_icon).click(() => {
+                                        if (!force_muted) {
+                                            setMuted(!self_muted);
+                                            emit("mute_self", {"muted": self_muted});
                                         }
-                                        message_queue = [];
+                                    });
 
-                                        let div = document.createElement("div");
+                                    iconContainer.appendChild(mic_icon);
+                                    div.appendChild(iconContainer);
 
-                                        let iconContainer = document.createElement("div");
+                                    let inputContainer = document.createElement("div");
+                                    inputContainer.id = "input-container";
 
-                                        let icon = document.createElement("ion-icon");
-                                        icon.id = "mic-icon";
-                                        icon.name = "mic";
-                                        $(icon).click((e) => {
-                                            e.target.setAttribute('name', e.target.name === 'mic' ? 'mic-off' : 'mic');
+                                    for (let id of ["input", "output"]) {
+                                        let dropdown = document.createElement("div");
+                                        dropdown.id = "audio-"+id;
+                                        dropdown.classList.add("dropdown");
 
-                                            local_media_stream.getAudioTracks()[0].enabled = e.target.name === 'mic';
+                                        let select = document.createElement("div");
+                                        select.classList.add("select");
+
+                                        let span = document.createElement("span");
+                                        span.innerText = "Default";
+
+                                        select.appendChild(span);
+                                        dropdown.appendChild(select);
+
+                                        let hiddenInput = document.createElement("input");
+                                        hiddenInput.type = "hidden";
+                                        hiddenInput.value = "default";
+
+                                        dropdown.appendChild(hiddenInput);
+
+                                        let menu = document.createElement("ul");
+                                        menu.classList.add("dropdown-menu");
+
+                                        dropdown.appendChild(menu);
+
+                                        inputContainer.appendChild(dropdown);
+
+                                        $(dropdown).click(() => {
+                                            dropdown.tabIndex *= -1;
+                                            dropdown.focus();
+                                            dropdown.classList.toggle('active');
+
+                                            $(menu).slideToggle(300);
                                         });
+                                        $(dropdown).blur(() => {
+                                            dropdown.tabIndex = -1;
+                                            dropdown.classList.remove('active');
 
-                                        iconContainer.appendChild(icon);
-                                        div.appendChild(iconContainer);
+                                            $(menu).slideUp(300);
+                                        });
+                                    }
 
-                                        let inputContainer = document.createElement("div");
-                                        inputContainer.id = "input-container";
+                                    navigator.mediaDevices.ondevicechange = () => {
+                                        navigator.mediaDevices.enumerateDevices().then((devices) => {
+                                            let inHTML = "";
+                                            let outHTML = "";
 
-                                        for (let id of ["input", "output"]) {
-                                            let dropdown = document.createElement("div");
-                                            dropdown.id = "audio-"+id;
-                                            dropdown.classList.add("dropdown");
+                                            for (let d in devices) {
+                                                let device = devices[d];
+                                                if (device.kind.includes("audio") && !device.label.includes("Communications")) {
+                                                    const option = document.createElement("li")
+                                                    option.classList.add("option");
+                                                    option.setAttribute("value", device.deviceId);
+                                                    option.innerText = device.label.includes("Default") ? "Default" : device.label;
 
-                                            let select = document.createElement("div");
-                                            select.classList.add("select");
-
-                                            let span = document.createElement("span");
-                                            span.innerText = "Default";
-
-                                            select.appendChild(span);
-                                            dropdown.appendChild(select);
-
-                                            let hiddenInput = document.createElement("input");
-                                            hiddenInput.type = "hidden";
-                                            hiddenInput.value = "default";
-
-                                            dropdown.appendChild(hiddenInput);
-
-                                            let menu = document.createElement("ul");
-                                            menu.classList.add("dropdown-menu");
-
-                                            dropdown.appendChild(menu);
-
-                                            inputContainer.appendChild(dropdown);
-
-                                            $(dropdown).click(() => {
-                                                dropdown.tabIndex *= -1;
-                                                dropdown.focus();
-                                                dropdown.classList.toggle('active');
-
-                                                $(menu).slideToggle(300);
-                                            });
-                                            $(dropdown).blur(() => {
-                                                dropdown.tabIndex = -1;
-                                                dropdown.classList.remove('active');
-
-                                                $(menu).slideUp(300);
-                                            });
-                                        }
-
-                                        navigator.mediaDevices.ondevicechange = () => {
-                                            navigator.mediaDevices.enumerateDevices().then((devices) => {
-                                                let inHTML = "";
-                                                let outHTML = "";
-
-                                                for (let d in devices) {
-                                                    let device = devices[d];
-                                                    if (device.kind.includes("audio") && !device.label.includes("Communications")) {
-                                                        const option = document.createElement("li")
-                                                        option.classList.add("option");
-                                                        option.setAttribute("value", device.deviceId);
-                                                        option.innerText = device.label.includes("Default") ? "Default" : device.label;
-
-                                                        if (device.kind.includes("input")) inHTML += option.outerHTML;
-                                                        else outHTML += option.outerHTML;
-                                                    }
+                                                    if (device.kind.includes("input")) inHTML += option.outerHTML;
+                                                    else outHTML += option.outerHTML;
                                                 }
+                                            }
 
-                                                for (let e of $("#input-container .dropdown")) {
-                                                    let dropdown = $(e);
+                                            for (let e of $("#input-container .dropdown")) {
+                                                let dropdown = $(e);
 
-                                                    dropdown.find(".dropdown-menu")[0].innerHTML = (dropdown.attr("id").includes("input") ? inHTML : outHTML);
+                                                dropdown.find(".dropdown-menu")[0].innerHTML = (dropdown.attr("id").includes("input") ? inHTML : outHTML);
 
-                                                    dropdown.find("li").click((e) => {
-                                                        let hiddenInput = $(e.target).parent().siblings("input");
-                                                        let id = $(e.target).parent().parent().attr("id");
+                                                dropdown.find("li").click((e) => {
+                                                    let hiddenInput = $(e.target).parent().siblings("input");
+                                                    let id = $(e.target).parent().parent().attr("id");
 
-                                                        let newVal = e.target.getAttribute('value');
+                                                    let newVal = e.target.getAttribute('value');
 
-                                                        if (newVal !== hiddenInput.val()) {
-                                                            if (id.includes('input')) {
-                                                                setup_local_media(null, null, e.target.getAttribute("value"));
-                                                            } else if (id.includes('output')) {
-                                                                for (let audio of $("audio")) {
-                                                                    audio.setSinkId(e.target.getAttribute("value"));
-                                                                }
+                                                    if (newVal !== hiddenInput.val()) {
+                                                        if (id.includes('input')) {
+                                                            setup_local_media(null, null, e.target.getAttribute("value"));
+                                                        } else if (id.includes('output')) {
+                                                            for (let audio of $("audio")) {
+                                                                audio.setSinkId(e.target.getAttribute("value"));
                                                             }
                                                         }
-
-                                                        $(e.target).parent().parent().find("span").text(e.target.innerText);
-                                                        hiddenInput.val(newVal);
-                                                    });
-
-                                                    let curVal = dropdown.find("input").val();
-                                                    if (curVal === "default" || !devices.some(d => d.deviceId === curVal)) {
-                                                        dropdown.find("li[value=default]").triggerHandler('click');
                                                     }
+
+                                                    $(e.target).parent().parent().find("span").text(e.target.innerText);
+                                                    hiddenInput.val(newVal);
+                                                });
+
+                                                let curVal = dropdown.find("input").val();
+                                                if (curVal === "default" || !devices.some(d => d.deviceId === curVal)) {
+                                                    dropdown.find("li[value=default]").triggerHandler('click');
                                                 }
-                                            });
-                                        }
-
-                                        div.appendChild(inputContainer);
-                                        document.body.appendChild(div);
-
-                                        navigator.mediaDevices.ondevicechange(null);
-                                    }, () => { // denied
-
+                                            }
+                                        });
                                     }
-                                )
-                            } else {
-                                document.location.reload();
-                            }
-                        });
 
-                        if (!data.valid) {
-                            msg.toggle();
-                            loadingRing.toggle();
-                            mark.toggle();
-                            btn[0].setAttribute("hidden", "");
-                            refresh.click();
-                        }
+                                    div.appendChild(inputContainer);
+                                    document.body.appendChild(div);
+
+                                    navigator.mediaDevices.ondevicechange(null);
+                                }, () => { // denied
+
+                                }
+                            )
+                        });
                     };
                 }, 1200);
             };
             const disconnect = () => {
                 let peer_id;
-                console.log("Disconnected from signaling server");
                 /* Tear down all of our peer connections and remove all the
                 * media divs when we disconnect */
                 for (peer_id in peer_media_elements) {
@@ -651,7 +685,6 @@
                     return;
                 }
 
-                console.log('Signaling server said to add peer:', config);
                 const peer_id = config.peer_id;
                 if (peer_id in peers) {
                     /* This could happen if the user joins multiple channels where the other peer is also in. */
@@ -666,9 +699,8 @@
                 );
                 peers[peer_id] = peer_connection;
                 peer_connection.onicecandidate = function(event) {
-                    console.log("onicecandidate", event)
                     if (event.candidate) {
-                        emit('relayICECandidate', {
+                        emit('relay_ice_candidate', {
                             'peer_id': peer_id,
                             'ice_candidate': {
                                 'sdpMLineIndex': event.candidate.sdpMLineIndex,
@@ -678,7 +710,6 @@
                     }
                 }
                 peer_connection.ontrack = function(event) {
-                    console.log("ontrack", event);
                     const remote_media = $("<audio>");
                     remote_media.attr("autoplay", "");
                     remote_media.attr("id", peer_id);
@@ -699,15 +730,12 @@
                 * create an offer, then send back an answer 'sessionDescription' to us
                 */
                 if (config.should_create_offer) {
-                    console.log("Creating RTC offer to ", peer_id);
                     peer_connection.createOffer(
                         function (local_description) {
-                            console.log("Local offer description is: ", local_description);
                             peer_connection.setLocalDescription(local_description,
                                 function() {
-                                    emit('relaySessionDescription',
+                                    emit('relay_session_description',
                                         {'peer_id': peer_id, 'session_description': local_description});
-                                    console.log("Offer setLocalDescription succeeded");
                                 },
                                 function() { Alert("Offer setLocalDescription failed!"); }
                             );
@@ -716,22 +744,32 @@
                             console.log("Error sending offer: ", error);
                         });
                 }
-                console.log("peer added:", config);
             };
             const setVolume = (config) => {
-                console.log("Setting volume ", config);
                 for (let id in config.volume) {
-                    console.log("id: "+id +" ("+config.volume[id]+")");
                     if (gain_nodes[id]) gain_nodes[id].gain.value = config.volume[id];
                 }
             };
 
             const joinMinecraft = (config) => {
-                $("#leftMinecraftError").fadeOut(800);
+                $("#error").fadeOut(800);
             };
 
             const leaveMinecraft = (config) => {
-                $("#leftMinecraftError").fadeTo(200, 1);
+                $("#errorTitle").text("Minecraft Offline");
+                $("#errorMessage").text("You have left the Minecraft server, please rejoin to continue.");
+                $("#errorButton").hide();
+                $("#error").fadeTo(200, 1);
+            }
+
+            const minecraftDisconnected = (config) => {
+                $("#errorTitle").text("Minecraft Disconnected");
+                $("#errorMessage").text("You have disconnected through Minecraft. Return to player selection.")  ;
+                $("#errorButton").show();
+                $("#errorButton").click(() => {
+                    location.reload();
+                });
+                $("#error").fadeTo(200, 1);
             }
 
             /**
@@ -746,25 +784,19 @@
                     return;
                 }
 
-                console.log('Remote description received: ', config);
                 const peer_id = config.peer_id;
                 const peer = peers[peer_id];
                 const remote_description = config.session_description;
-                console.log(config.session_description);
                 const desc = new RTCSessionDescription(remote_description);
                 const stuff = peer.setRemoteDescription(desc,
                     function () {
-                        console.log("setRemoteDescription succeeded");
                         if (remote_description.type === "offer") {
-                            console.log("Creating answer");
                             peer.createAnswer(
                                 function (local_description) {
-                                    console.log("Answer description is: ", local_description);
                                     peer.setLocalDescription(local_description,
                                         function () {
                                             emit('relaySessionDescription',
                                                 {'peer_id': peer_id, 'session_description': local_description});
-                                            console.log("Answer setLocalDescription succeeded");
                                         },
                                         function () {
                                             alert("Answer setLocalDescription failed!");
@@ -781,7 +813,6 @@
                         console.log("setRemoteDescription error: ", error);
                     }
                 );
-                console.log("Description Object: ", desc);
             };
             /**
              * The offerer will send a number of ICE Candidate blobs to the answerer so they
@@ -813,7 +844,6 @@
                     return;
                 }
 
-                console.log('Signaling server said to remove peer:', config);
                 const peer_id = config.peer_id;
                 if (peer_id in peer_media_elements) {
                     peer_media_elements[peer_id].remove();
@@ -832,7 +862,7 @@
 
                 $("#playerSelectImages")[0].innerHTML = "";
 
-                emit('requestPlayerList', {});
+                emit('request_player_list', {});
             }
             $("#playerSelectConfirm")[0].onclick = (e) => {
                 let uuid = $("#playerSelect img[chosen]")[0]?.getAttribute("uuid");
@@ -884,14 +914,12 @@
                 }
             }
 
-            console.log("Connecting to signaling server");
             signaling_socket = new WebSocket(SIGNALING_SERVER);
             signaling_socket.onopen = connect;
-            signaling_socket.onclose = disconnect;
+            signaling_socket.onclose = minecraftDisconnected;
 
             signaling_socket.onmessage = (message) => {
                 const data = JSON.parse(message.data);
-                console.log(data)
                 switch (data.event) {
                     case "join_verify": joinVerify(data); break;
                     case "add_peer": addPeer(data); break;
@@ -902,6 +930,9 @@
                     case "player_list": playerList(data); break
                     case "join_minecraft": joinMinecraft(data); break
                     case "leave_minecraft": leaveMinecraft(data); break
+                    case "disconnected": minecraftDisconnected(data); break
+                    case "force_mute": setMuted(undefined, data.muted); break
+                    case "mute_self": setMuted(data.muted);
                 }
             }
 
@@ -948,7 +979,7 @@
                                 actionBar += displayChars[Math.floor(Math.min(displayChars.length-1, volume/decibelsPerCharacter))];
                             }
 
-                            emit('volumeVisualization', {"actionBar": actionBar});
+                            emit('volume_visualization', {"actionBar": actionBar});
                         }
 
                         if (javascript_node) {
@@ -1003,24 +1034,33 @@
     <div class="fullscreen-container" id="playerSelectPopup">
         <div class="popupContainer">
             <div class="popup">
-                <h1>Confirming selection in Minecraft</h1>
-                <h3>Check your in-game chat for a message.</h3>
-                <div class="center" id="playerSelectLoading">
-                    <div class="lds-ring"><div></div><div></div><div></div><div></div></div>
-                    <svg id="playerSelectCheckmark" class="symbol" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52"><circle class="symbol_circle" cx="26" cy="26" r="25" fill="none"/><path class="symbol_symbol" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8"/></svg>
-                    <svg id="playerSelectXmark" class="symbol" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52"><circle class="symbol_circle" cx="26" cy="26" r="25" fill="none"/><path class="symbol_symbol" fill="none" d="M16 16 36 36 M36 16 16 36"/></svg>
+                <div>
+                    <h1>Confirming selection in Minecraft</h1>
+                    <h3>Check your in-game chat for a message.</h3>
                 </div>
-                <p id="playerSelectMessage"></p>
-                <div class="center" style="position: relative;"><div class="button" id="playerSelectMessageButton" hidden></div></div>
+                <div>
+                    <div class="center" id="playerSelectLoading">
+                        <div class="lds-ring"><div></div><div></div><div></div><div></div></div>
+                        <svg id="playerSelectCheckmark" class="symbol" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52"><circle class="symbol_circle" cx="26" cy="26" r="25" fill="none"/><path class="symbol_symbol" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8"/></svg>
+                        <svg id="playerSelectXmark" class="symbol" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52"><circle class="symbol_circle" cx="26" cy="26" r="25" fill="none"/><path class="symbol_symbol" fill="none" d="M16 16 36 36 M36 16 16 36"/></svg>
+                    </div>
+                    <p id="playerSelectMessage"></p>
+                </div>
+                <div class="button-container">
+                    <div class="button" id="playerSelectMessageButton" hidden></div>
+                </div>
             </div>
         </div>
     </div>
 </div>
-<div class="fullscreen-container" id="leftMinecraftError">
+<div class="fullscreen-container" id="error">
     <div class="popupContainer">
         <div class="popup" style="height: 20%">
-            <h1>Minecraft Offline</h1>
-            <p style="color: var(--red); font-size: medium;">You have left the Minecraft server, please rejoin to continue.</p>
+            <h1 id="errorTitle"></h1>
+            <p id="errorMessage" style="color: var(--red); font-size: medium;"></p>
+            <div class="button-container">
+                <div class="button" id="errorButton" hidden>&#10005;</div>
+            </div>
         </div>
     </div>
 </div>

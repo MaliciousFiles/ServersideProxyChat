@@ -5,3 +5,13 @@ api-version: '1.21'
 authors: [ MaliciousFiles ]
 description: Adds proximity voice chat without any installation on the client side.
 website: https://github.com/MaliciousFiles/ServersideProxyChat
+commands:
+  mute:
+    description: Mute yourself or another player
+    usage: /mute [player]
+  unmute:
+    description: Unmute yourself or another player
+    usage: /unmute [player]
+  disconnect:
+    description: Disconnect yourself or another player
+    usage: /disconnect [player]

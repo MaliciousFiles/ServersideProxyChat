@@ -1,4 +1,4 @@
-package io.github.maliciousfiles.serversideProxyChat.webSocket;
+package io.github.maliciousfiles.serversideProxyChat.websocket;
 
 import com.google.common.collect.BiMap;
 import com.google.common.collect.ImmutableBiMap;
@@ -14,10 +14,10 @@ public interface WebSocketPacket {
             // INBOUND
             .put("validate", Validate.class)
             .put("join", Join.class)
-            .put("relayICECandidate", RelayICECandidate.class)
-            .put("relaySessionDescription", RelaySessionDescription.class)
-            .put("requestPlayerList", RequestPlayerList.class)
-            .put("volumeVisualization", VolumeVisualization.class)
+            .put("relay_ice_candidate", RelayICECandidate.class)
+            .put("relay_session_description", RelaySessionDescription.class)
+            .put("request_player_list", RequestPlayerList.class)
+            .put("volume_visualization", VolumeVisualization.class)
             .put("close", Close.class)
             // OUTBOUND
             .put("remove_peer", RemovePeer.class)
@@ -25,10 +25,14 @@ public interface WebSocketPacket {
             .put("ice_candidate", ICECandidate.class)
             .put("join_minecraft", JoinMinecraft.class)
             .put("leave_minecraft", LeaveMinecraft.class)
+            .put("force_mute", ForceMute.class)
             .put("join_verify", JoinVerify.class)
             .put("add_peer", AddPeer.class)
             .put("set_volume", SetVolume.class)
             .put("player_list", PlayerList.class)
+            .put("disconnected", Disconnected.class)
+            // INOUT
+            .put("mute_self", MuteSelf.class)
             .build();
 
     // UTIL
@@ -50,6 +54,7 @@ public interface WebSocketPacket {
     record ICECandidate(String peer_id, ICECandidateObject ice_candidate) implements WebSocketPacket {}
     record JoinMinecraft() implements WebSocketPacket {}
     record LeaveMinecraft() implements WebSocketPacket {}
+    record ForceMute(boolean muted) implements WebSocketPacket {}
     record JoinVerify(boolean valid, String message) implements WebSocketPacket {
 
         public static JoinVerify of(VerifyResponse response, String playerName) {
@@ -95,5 +100,8 @@ public interface WebSocketPacket {
             return this;
         }
     }
+    record Disconnected() implements WebSocketPacket {}
 
+    // INOUT
+    record MuteSelf(boolean muted) implements WebSocketPacket {}
 }
