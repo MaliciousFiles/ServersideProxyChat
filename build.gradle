@@ -1,5 +1,10 @@
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+import io.papermc.paperweight.userdev.ReobfArtifactConfiguration
+
 plugins {
     id 'java'
+    id 'io.papermc.paperweight.userdev' version '1.7.7'
+    id 'com.gradleup.shadow' version '9.0.0-beta4'
 }
 
 group = 'io.github.maliciousfiles'
@@ -8,8 +13,8 @@ version = '1.0-SNAPSHOT'
 repositories {
     mavenCentral()
     maven {
-        name = "spigotmc-repo"
-        url = "https://hub.spigotmc.org/nexus/content/repositories/snapshots/"
+        name = "papermc-repo"
+        url = "https://repo.papermc.io/repository/maven-public/"
     }
     maven {
         name = "sonatype"
@@ -18,8 +23,23 @@ repositories {
 }
 
 dependencies {
-    compileOnly("org.spigotmc:spigot-api:1.21.4-R0.1-SNAPSHOT")
+    compileOnly("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
+
+    compileOnly("io.netty:netty-handler:4.1.116.Final")
+    compileOnly("io.netty:netty-codec:4.1.116.Final")
+    implementation("io.netty:netty-codec-http:4.1.116.Final")
+    compileOnly("io.netty:netty-common:4.1.116.Final")
+
+    paperweight.paperDevBundle "1.21.4-R0.1-20241215.095037-18" // for some reason, the later versions get mad (I think b/c of ".module" files)
 }
+
+tasks.named('shadowJar', ShadowJar) {
+    dependencies {
+        include(dependency("io.netty:netty-codec-http"));
+    }
+}
+
+paperweight.reobfArtifactConfiguration = ReobfArtifactConfiguration.Companion.MOJANG_PRODUCTION
 
 def targetJavaVersion = 21
 java {
