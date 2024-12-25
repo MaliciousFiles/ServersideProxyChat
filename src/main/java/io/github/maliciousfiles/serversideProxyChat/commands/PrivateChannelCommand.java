@@ -92,6 +92,7 @@ public class PrivateChannelCommand extends ProxyChatCommand {
             } else if (strings[0].equalsIgnoreCase("leave")) {
                 if (commandSender.hasPermission(PRIVATE_CHANNEL_MANAGE_OTHERS_PERM)) {
                     completions = Bukkit.getOnlinePlayers().stream()
+                            .filter(WebSocketServer::isRegistered)
                             .filter(p -> WebSocketServer.getPrivateChannel(p) != null)
                             .map(Player::getName).toList();
                 }
@@ -100,6 +101,7 @@ public class PrivateChannelCommand extends ProxyChatCommand {
             if (strings[0].equalsIgnoreCase("join")) {
                 if (commandSender.hasPermission(PRIVATE_CHANNEL_MANAGE_OTHERS_PERM)) {
                     completions = Bukkit.getOnlinePlayers().stream()
+                            .filter(WebSocketServer::isRegistered)
                             .filter(p -> !strings[1].equalsIgnoreCase(WebSocketServer.getPrivateChannel(p)))
                             .map(Player::getName).toList();
                 }
